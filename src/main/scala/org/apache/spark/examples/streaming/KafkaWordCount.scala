@@ -19,12 +19,7 @@
 package org.apache.spark.examples.streaming
 
 import kafka.serializer.StringDecoder
-import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.hbase.HBaseConfiguration
-import org.apache.hadoop.hbase.client.Put
-import org.apache.hadoop.hbase.mapreduce.TableOutputFormat
-import org.apache.hadoop.hbase.util.Bytes
-import org.apache.hadoop.io.Text
+import org.apache.hadoop.io.{LongWritable, Text}
 import org.apache.spark.streaming._
 import org.apache.spark.streaming.kafka._
 import org.apache.spark.SparkConf
@@ -39,7 +34,7 @@ import org.apache.spark.SparkConf
   *    $ bin/run-example streaming.DirectKafkaWordCount broker1-host:port,broker2-host:port \
   *    topic1,topic2
   */
-object DirectKafkaWordCount {
+object KafkaWordCount {
   def main(args: Array[String]) {
     if (args.length < 2) {
       System.err.println(s"""
@@ -53,8 +48,8 @@ object DirectKafkaWordCount {
 
     StreamingExamples.setStreamingLogLevels()
 
-    val Array(brokers, topics, hbaseMaster) = args
-
+    val Array(brokers, topics) = args
+    var totalCount = 0L
     // Create context with 2 second batch interval
     val sparkConf = new SparkConf().setAppName("DirectKafkaWordCount")
     sparkConf.setMaster("local[2]")
@@ -65,30 +60,39 @@ object DirectKafkaWordCount {
     val kafkaParams = Map[String, String]("metadata.broker.list" -> brokers)
     val messages = KafkaUtils.createDirectStream[String, String, StringDecoder, StringDecoder](
       ssc, kafkaParams, topicsSet)
+    // val input =  ssc.sparkContext.parallelize(List("pandas", "i like pandas"))
+   // input.saveAsTextFile("/tmp/streamPanda")
 
-  /*  val columnFamilyName = "PatientCore"
-    val columnName = "PatientID"
-    messages.foreachRDD(rdd => {
-      val hbaseConf = HBaseConfiguration.create()
-      hbaseConf.set(TableOutputFormat.OUTPUT_TABLE, "EMR")
-      hbaseConf.set("hbase.master", hbaseMaster)
-      val jobConf = new Configuration(hbaseConf)
-      jobConf.set("mapreduce.job.outputformat.class", classOf[TableOutputFormat[Text]].getName)
-      rdd.map(rec => {
-        val put = new Put(rec._1.getBytes)
-        put.addColumn(columnFamilyName.getBytes, columnName.getBytes, Bytes.toBytes(rec._2 ))
-        (rec._1, put)
-      }).saveAsNewAPIHadoopDataset(jobConf)
-    })  */
-      messages.saveAsHadoopFiles("subreddit", "hadoop")
-  //  messages.saveAsNewAPIHadoopFiles("subreddit", "newhadoop")
-    //messages.saveAsNewAPIHadoopFiles("subreddit", "newhadoop",
-      //classOf[IntWritable], classOf[Text], classOf[NewTextOutputFormat[IntWritable, Text]])
-    // Get the lines, split them into words, count the words and print
-    val lines = messages.map(_._2)
-    val words = lines.flatMap(_.split(" "))
-    val wordCounts = words.map(x => (x, 1L)).reduceByKey(_ + _)
-    wordCounts.print()
+//messages.print()
+   val lines = messages.map(_._2)  //Key is null, retrieve value
+    lines.print()// only showing some of the lines, sourced data from eclipse with 1k, this wrote 1k , check flume setup
+
+  
+
+   lines.foreachRDD(rdd=>{
+      if(!rdd.isEmpty()){
+       totalCount = totalCount+ rdd.count()
+        System.out.println("TotalCount "+totalCount+" Not Empty "+rdd.toString())
+        rdd.saveAsTextFile("/tmp/lines"+System.currentTimeMillis())
+
+
+      }
+    })
+    //val words = lines.flatMap(_.split(" "))
+   // val wordCounts = words.map(x => (x, 1L)).reduceByKey(_ + _)
+   // wordCounts.print()
+
+    /*  messages.count().foreachRDD(rdd=>{
+      if(!rdd.partitions.isEmpty){
+
+        rdd.saveAsTextFile("/tmp/wordCounts")
+
+      }
+    }) */
+
+  //  messages.saveAsTextFiles("/tmp/wordCounts")
+
+   // messages.saveAsHadoopFiles("/tmp/wordCounts","countFile")
 
     // Start the computation
     ssc.start()
